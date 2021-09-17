@@ -83,7 +83,7 @@ while True:
     output_img = Image.fromarray(output_arr.astype("uint8"), mode="RGB")
     frame = Image.fromarray(frame, mode="RGB")
 
-    blended = Image.blend(output_img, frame, alpha=0.5)
+    blended = Image.blend(output_img, frame, alpha=0.9)
     result = np.array(blended)
     cv2.imshow('frame', result)
     if cv2.waitKey(1) & 0xFF == ord('q'):
