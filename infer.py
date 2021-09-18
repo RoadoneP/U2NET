@@ -5,6 +5,7 @@ from PIL import Image
 import numpy as np
 
 import warnings
+import cv2
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -24,7 +25,7 @@ image_dir = "input_images"
 result_dir = "output_images"
 checkpoint_path = os.path.join("trained_checkpoint", "cloth_segm_u2net_latest.pth")
 do_palette = True
-
+color_dir = 'color_images/blue.png'
 
 def get_palette(num_cls):
     """Returns the color map for visualizing the segmentation mask.
@@ -48,6 +49,55 @@ def get_palette(num_cls):
             i += 1
             lab >>= 3
     return palette
+
+def extract_mask(output_arr, img):
+  original_img = np.array(img)
+  background_mask = np.where(output_arr==0, 1, 0)
+  class1_mask = np.where(output_arr==1, 1, 0) 
+  class2_mask = np.where(output_arr==2, 1, 0)
+  class3_mask = np.where(output_arr==3, 1, 0)
+  background_mask =np.repeat(background_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  class1_mask =np.repeat(class1_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  class2_mask =np.repeat(class2_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  class3_mask =np.repeat(class3_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  
+  masks = [background_mask, class1_mask, class2_mask, class3_mask]
+  return masks
+  
+def color_change(background_seg_imgs, mask, color_dir):
+  one_color = cv2.imread(color_dir) # 이미지 파일을 컬러로 불러옴
+  height, width = one_color.shape[:2] # 이미지의 높이와 너비 불러옴, 가로 [0], 세로[1]
+
+  one_hsv = cv2.cvtColor(one_color, cv2.COLOR_BGR2HSV) # cvtColor 함수를 이용하여 hsv 색공간으로 변환
+  center_h = (height // 2)
+  center_w = (width // 2)
+
+  one_h = one_hsv[center_h][center_w][0]
+  one_s = one_hsv[center_h][center_w][1]
+  one_v = one_hsv[center_h][center_w][2] 
+  print(one_h, one_s, one_v)
+  
+  test = mask
+  hsv = cv2.cvtColor(test.astype("uint8"), cv2.COLOR_RGB2HSV)
+
+  (h, s, v) = cv2.split(hsv)
+
+  eval_s = s.sum() // np.count_nonzero(s)
+  eval_v = v.sum() // np.count_nonzero(v)
+
+  h[:, :] = one_h
+  # s[:, :] = s + one_s - eval_s
+  s[:, :] = np.where(s + (one_s - eval_s) > 255, 255, s + (one_s - eval_s))
+  # v[:, :] = v + one_v - eval_v
+  v[:, :] = np.where(v + (one_v - eval_v) > 255, 255, v + (one_v - eval_v))
+
+  hsv = cv2.merge((h, s, v))
+
+  rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+  test = rgb * np.where(mask!=0, 1, 0) 
+  test = test + background_seg_imgs
+  test = Image.fromarray(test.astype("uint8"), mode="RGB")
+  test.save(os.path.join(image_name[:-3] + "png"))
 
 
 transforms_list = []
@@ -78,10 +128,12 @@ for image_name in images_list:
     output_tensor = torch.squeeze(output_tensor, dim=0)
     output_tensor = torch.squeeze(output_tensor, dim=0)
     output_arr = output_tensor.cpu().numpy()
-    output_img = Image.fromarray(output_arr.astype("uint8"), mode="L")
-    if do_palette:
-        output_img = output_img.putpalette(palette)
-        
+    background_mask, class1_mask, class2_mask, class3_mask = extract_mask(output_arr, img)
+
+    color_change(background_mask, class1_mask, color_dir)
+    output_img = Image.fromarray(background_mask.astype("uint8"), mode="RGB")
+    #if do_palette:
+        #output_img.putpalette(palette)
     output_img.save(os.path.join(result_dir, image_name[:-3] + "png"))
 
     pbar.update(1)
