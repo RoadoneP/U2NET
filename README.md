@@ -11,14 +11,29 @@ This model works well with any background and almost all poses. For more samples
 
 ### success
 <img src="images\1.png" width = 300> <img src="images\1-1.png" width = 300>
-<img src="images\2.png" width = 300> <img src="images\2-1.png" width = 300>
 <img src="images\3.png" width = 300> <img src="images\3-1.png" width = 300>
 <img src="images\5.png" width = 300> <img src="images\5-1.png" width = 300>
 
 ### false
 <img src="images\4.png" width = 300> <img src="images\4-1.png" width = 300>
 
+# Color change
+In **infer.py**
+```
+color_dir = COLOR_IMG
+```
+change the path to the image directory
 
+## result
+
+### original
+<img src="images\1 -2 (2).png" width = 250> <img src="images\1 -2 (6).jpg" width = 250>
+### purple
+<img src="images\1-1 (2).png" width = 250> <img src="images\1-1 (6).png" width = 250>
+### light green
+<img src="images\1 (2).png" width = 250> <img src="images\1 (6).png" width = 250>
+### sky blue
+<img src="images\1 - 3(2).png" width = 250> <img src="images\1 - 3(6).png" width = 250>
 
 # Techinal details
 

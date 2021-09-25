@@ -22,31 +22,62 @@ from networks import U2NET
 device = "cuda"
 
 checkpoint_path = os.path.join("trained_checkpoint", "cloth_segm_u2net_latest.pth")
+
+image_dir = "input_images"
+result_dir = "output_images"
+checkpoint_path = os.path.join("trained_checkpoint", "cloth_segm_u2net_latest.pth")
 do_palette = True
+color_dir = 'color_images/purple.jpg'
+
+def extract_mask(output_arr, img):
+  original_img = np.array(img)
+  background_mask = np.where(output_arr==0, 1, 0)
+  class1_mask = np.where(output_arr==1, 1, 0) 
+  class2_mask = np.where(output_arr==2, 1, 0)
+  class3_mask = np.where(output_arr==3, 1, 0)
+  background_mask =np.repeat(background_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  class1_mask =np.repeat(class1_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  class2_mask =np.repeat(class2_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  class3_mask =np.repeat(class3_mask[:, :, np.newaxis], 3, axis=2) * original_img
+  
+  masks = [background_mask, class1_mask, class2_mask, class3_mask]
+  return masks
+  
+def color_change(background_seg_imgs, mask, color_dir):
+  one_color = cv2.imread(color_dir) # 이미지 파일을 컬러로 불러옴
+  height, width = one_color.shape[:2] # 이미지의 높이와 너비 불러옴, 가로 [0], 세로[1]
+
+  one_hsv = cv2.cvtColor(one_color, cv2.COLOR_BGR2HSV) # cvtColor 함수를 이용하여 hsv 색공간으로 변환
+  center_h = (height // 2)
+  center_w = (width // 2)
+
+  one_h = one_hsv[center_h][center_w][0]
+  one_s = one_hsv[center_h][center_w][1]
+  one_v = one_hsv[center_h][center_w][2]
+
+  test = mask
+  hsv = cv2.cvtColor(test.astype("uint8"), cv2.COLOR_RGB2HSV)
+
+  (h, s, v) = cv2.split(hsv)
+
+  eval_s = s.sum() // np.count_nonzero(s)
+  eval_v = v.sum() // np.count_nonzero(v)
 
 
-def get_palette(num_cls):
-    """Returns the color map for visualizing the segmentation mask.
-    Args:
-        num_cls: Number of classes
-    Returns:
-        The color map
-    """
-    n = num_cls
-    palette = [0] * (n * 3)
-    for j in range(0, n):
-        lab = j
-        palette[j * 3 + 0] = 0
-        palette[j * 3 + 1] = 0
-        palette[j * 3 + 2] = 0
-        i = 0
-        while lab:
-            palette[j * 3 + 0] |= ((lab >> 0) & 1) << (7 - i)
-            palette[j * 3 + 1] |= ((lab >> 1) & 1) << (7 - i)
-            palette[j * 3 + 2] |= ((lab >> 2) & 1) << (7 - i)
-            i += 1
-            lab >>= 3
-    return palette
+  h[:, :] = one_h
+  s[:,:] = one_s
+ # s[:, :] = np.where(s + (one_s - eval_s) > 255, 255, s + (one_s - eval_s))
+  #v[:, :] = np.where(v + (one_v - eval_v) > 255, 255, v + (one_v - eval_v))
+
+
+  hsv = cv2.merge((h, s, v))
+
+  rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+  
+  test = rgb * np.where(mask!=0, 1, 0) 
+  test = test + background_seg_imgs
+  return test
+  
 
 
 transforms_list = []
@@ -59,7 +90,7 @@ net = load_checkpoint_mgpu(net, checkpoint_path)
 net = net.to(device)
 net = net.eval()
 
-palette = get_palette(4)
+
 
 VideoSignal = cv2.VideoCapture(0)
 
@@ -75,17 +106,12 @@ while True:
     output_tensor = torch.squeeze(output_tensor, dim=0)
     output_tensor = torch.squeeze(output_tensor, dim=0)
     output_arr = output_tensor.cpu().numpy()
-    output_arr = np.array(output_arr, dtype=np.uint8)
-    output_arr =np.repeat(output_arr[:, :, np.newaxis], 3, axis=2)
-    output_arr[np.where((output_arr==[1,1,1]).all(axis=2))] = [0, 255, 0]
-    output_arr[np.where((output_arr==[2,2,2]).all(axis=2))] = [255, 0, 0]
-    output_arr[np.where((output_arr==[3,3,3]).all(axis=2))] = [0, 0, 255]
-    output_img = Image.fromarray(output_arr.astype("uint8"), mode="RGB")
-    frame = Image.fromarray(frame, mode="RGB")
+    background_mask, class1_mask, class2_mask, class3_mask = extract_mask(output_arr, img)
+    output_img = color_change(background_mask + class2_mask, class1_mask, color_dir)
+    output_img = np.array(output_img, dtype=np.uint8)
+    output_img = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
 
-    blended = Image.blend(output_img, frame, alpha=0.9)
-    result = np.array(blended)
-    cv2.imshow('frame', result)
+    cv2.imshow('frame', output_img)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
